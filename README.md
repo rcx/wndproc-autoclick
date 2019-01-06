@@ -3,7 +3,7 @@
 An autoclicker is a program that simulates mouse input to click automatically for you.
 Typically this is used to automate some boring task (like Cookie Clicker games).
 
-The typical way to do that on Windows is to use the Winapi functions SendMessage or SendInput`.
+The typical way to do that on Windows is to use the Winapi functions SendMessage or SendInput.
 However, what if we want to go even faster? Like, really, really fast.
 
 This project is a rough PoC for bypassing the Win32 message pump entirely by calling the target program's WndProc function directly to post click events, using code injection.
