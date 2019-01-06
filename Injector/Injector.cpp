@@ -62,6 +62,8 @@ int main()
 	DWORD dwPid;
 	GetWindowThreadProcessId(hWnd, &dwPid);
 
+	printf("%x %x %x\n", sizeof(CONTEXT), offsetof(CONTEXT, Rsp), offsetof(CONTEXT, Rcx));
+
 	//while (dwPid = FindPid("win32calc.exe"), !dwPid)
 	//{
 	//	Sleep(100);
