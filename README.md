@@ -15,5 +15,4 @@ First, we grab the HWND underneath the cursor and find the process it belongs to
 Then we inject a DLL into this process that will do our autoclicking using a standard LoadLibrary injection.
 In the DLL, we first grab the HWND's WndProc's address. Then, there are two options.
 For simple programs (like Windows Calculator or some simple .NET Forms apps), we can simply call WndProc as quickly as possible from our DLL's thread.
-For complex programs (like Chromium or Firefox), trying to call WndProc from the wrong thread results in a crash. We need to call it from the program's GUI thread.
-To do that, we get the thread ID associated with the HWND then hijack it using SetThreadContext. This method is a lot less stable.
+For complex programs (like Chromium or Firefox), trying to call WndProc from the wrong thread results in a crash. We need to call it from the program's GUI thread. To accomplish this, we hook WndProc using a jmp trampoline. It should always be safe to call WndProc from the detour callback.
