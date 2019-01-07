@@ -54,10 +54,9 @@ void AssembleTrampoline(BYTE* dst, uintptr_t target)
 #define TRAMPOLINE_SIZE 14
 #else
 	BYTE trampoline[] = {
-		0x68, 0x00, 0x00, 0x00, 0x00, // push dword XXXXXXXX
-		0xC3 // ret
-	}
-#define TRAMPOLINE_SIZE 6
+		0xE9, 0x00, 0x00, 0x00, 0x00, // jmp XXXXXXXX
+	};
+#define TRAMPOLINE_SIZE 5
 #endif
 	
 	DWORD dwOldProtect;
@@ -70,7 +69,7 @@ void AssembleTrampoline(BYTE* dst, uintptr_t target)
 	*(DWORD*)(dst + 9) = (DWORD)((jmpTarget >> 32) & 0xFFFFFFFF);
 #else
 	
-	*(DWORD*)(dst + 1) = (DWORD)target;
+	*(DWORD*)(dst + 1) = (DWORD)(target - ((uintptr_t)dst + 5));
 #endif
 	
 	DWORD trash;
@@ -86,12 +85,27 @@ void RestoreHookedBytes()
 	VirtualProtect(wndProc, TRAMPOLINE_SIZE, dwOldProtect, &trash);
 }
 
+#ifdef _WIN64
 extern "C" {
 	CONTEXT savedContext;
-	void Trampoline64();
+	void HijackTrampoline();
 }
+#else
+extern "C" void HookCallback(CONTEXT* savedContext);
+__declspec(naked) void HijackTrampoline()
+{
+	_asm {
+		pushfd;
+		pushad;
+		call HookCallback;
+		popad;
+		popfd;
+		jmp dword ptr stolenBytes;
+	}
+}
+#endif
 
-__declspec(noreturn) extern "C" void HookCallback(CONTEXT* savedContext)
+extern "C" void HookCallback(CONTEXT* savedContext)
 {
 	EnterCriticalSection(&criticalSection);
 	printf("HELLO FROM WNDPROC HOOK!!!!!\n");
@@ -102,14 +116,14 @@ __declspec(noreturn) extern "C" void HookCallback(CONTEXT* savedContext)
 		// unhook
 		RestoreHookedBytes();
 		
-		for (int i = 0; i < 1; i++)
+		for (int i = 0; i < 100; i++)
 		{
 			wndProc(hWnd, WM_LBUTTONDOWN, MK_LBUTTON, lParam);
 			wndProc(hWnd, WM_LBUTTONUP, 0, lParam);
 		}
 
 		// restore hook
-		AssembleTrampoline((BYTE*)wndProc, (uintptr_t)Trampoline64);
+		AssembleTrampoline((BYTE*)wndProc, (uintptr_t)HijackTrampoline);
 	}
 	else
 	{
@@ -119,8 +133,10 @@ __declspec(noreturn) extern "C" void HookCallback(CONTEXT* savedContext)
 
 	printf("Wndproc done!\n");
 
+#ifdef _WIN64
 	savedContext->Rip = (DWORD64)stolenBytes;
 	RtlRestoreContext(savedContext, NULL);
+#endif
 }
 
 DWORD dwThreadId = 0;
@@ -133,6 +149,7 @@ void DisableAutoclick()
 	if (hThread)
 	{
 		CloseHandle(hThread);
+		hThread = NULL;
 	}
 	if (wndProcHooked)
 	{
@@ -200,36 +217,15 @@ void HookWndProc()
 {
 	printf("Hooking WndProc\n");
 
-	// Suspend before hooking
-	//DWORD dwSuspendCnt = 0;
-	//dwSuspendCnt = SuspendThread(hThread);
-	//if (dwSuspendCnt == (DWORD)-1)
-	//{
-	//	dank_perror("SuspendThread");
-	//	goto fail;
-	//}
-	//printf("SuspendCount = %d\n", dwSuspendCnt);
-
 	// Setup hook
-	memcpy(stolenBytes, (LPVOID)wndProc, TRAMPOLINE_SIZE + 3);
-	AssembleTrampoline(stolenBytes + TRAMPOLINE_SIZE + 3, (uintptr_t)wndProc + TRAMPOLINE_SIZE + 2); // jump back to WndProc
-	AssembleTrampoline((BYTE*)wndProc, (uintptr_t)Trampoline64);
+	// TODO: Use disassembler to avoid jump into middle of instruction; need to also relocate stolen bytes if required.
+	memcpy(stolenBytes, (LPVOID)wndProc, TRAMPOLINE_SIZE + 0);
+	AssembleTrampoline(stolenBytes + TRAMPOLINE_SIZE + 0, (uintptr_t)wndProc + TRAMPOLINE_SIZE + 0); // jump back to WndProc
+	AssembleTrampoline((BYTE*)wndProc, (uintptr_t)HijackTrampoline);
 	wndProcHooked = 1;
 
-	// Resume
-	//dwSuspendCnt = ResumeThread(hThread);
-	//if (dwSuspendCnt == (DWORD)-1)
-	//{
-	//	dank_perror("ResumeThread");
-	//	goto fail;
-	//}
-
-	printf("WndProc successfully hooked -> 0x%p\n", (uintptr_t)Trampoline64);
+	printf("WndProc successfully hooked -> 0x%p\n", (uintptr_t)HijackTrampoline);
 	return;
-
-fail:
-	printf("Failed to hook WndProc\n");
-	DisableAutoclick();
 }
 
 DWORD CALLBACK ThrMain(LPVOID hModule)
